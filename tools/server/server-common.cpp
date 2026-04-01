@@ -1634,14 +1634,30 @@ json convert_anthropic_to_oai(const json & body) {
     }
 
     // Handle Anthropic-specific thinking param
+    oai_body["chat_template_kwargs"] = {{"enable_thinking", false}};
+
     if (body.contains("thinking")) {
-        json thinking = json_value(body, "thinking", json::object());
-        std::string thinking_type = json_value(thinking, "type", std::string());
-        if (thinking_type == "enabled") {
-            int budget_tokens = json_value(thinking, "budget_tokens", 10000);
-            oai_body["thinking_budget_tokens"] = budget_tokens;
+        const auto& thinking = body.at("thinking");
+        const std::string t_type = json_value<std::string>(thinking, "type", "disabled");
+
+        if (t_type != "disabled") {
+            oai_body["chat_template_kwargs"] = {{"enable_thinking", true}};
+
+            if (t_type == "adaptive") {
+                const std::string effort = body.contains("output_config")
+                    ? json_value<std::string>(body.at("output_config"), "effort", "low")
+                    : "low";
+                oai_body["reasoning_effort"]       =  effort;
+                oai_body["thinking_budget_tokens"] =  effort == "medium" ? 16384
+                                                    : effort == "low"    ? 4096
+                                                    : -1;
+            } else {
+                oai_body["thinking_budget_tokens"] = json_value<int>(thinking, "budget_tokens", 0);
+            }
         }
     }
+
+    if (body.contains("temperature")) oai_body["temperature"] = body.at("temperature");
 
     // Handle Anthropic-specific metadata param
     if (body.contains("metadata")) {
